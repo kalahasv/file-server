@@ -26,4 +26,5 @@ unsigned char getHash(char*fileName){
 
 
 int main(int argc, char* argv[]) {
+    
 }
