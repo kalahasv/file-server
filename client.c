@@ -1,4 +1,4 @@
-// Thi Thuy Trang Tran, 74889299
+// Thi Thuy Trang Tran 74889299
 // Vikasni Kalahasthi 78601545
 
 // Client side
@@ -13,11 +13,32 @@
 #include <arpa/inet.h>
 #include <netdb.h>
 #include <sys/types.h>
-#define PORT 58130  // one of the available ports from ICS Computer Support domain
 
-#define MAX_BYTES 256
-#define MAX_LINE 80
+#define MAX_LINE 200
+#define MAX_U_ARGC 3    // Max number of client arguments
+#define MAX_CLIENT 5    // Max number of clients that could concurrently join the server
 
+
+// Server and client will have a way to communicate with each other to inform 
+// whether a file is opened, closed, read for those commands which don't need
+// send back a message from server. However, we would still send back message
+// to client to check those information
+
+
+void distributeInput(char* input, int* argc, char** argv) { //distributes input into argc & argv
+    // we would need to keep input for future usage hence we would define a temp here
+    // should not modify the orginial input in any cases
+    char tempInput[MAX_LINE];
+    strcpy(tempInput, input);
+
+    char* token;        
+    const char* delims = " \t\n";
+    token = strtok(tempInput, delims);  // first token is the command
+    while (token != NULL) {             // getting next arguments in to argv
+        argv[(*argc)++] = token;
+        token = strtok(NULL, delims);
+    }
+}
 
 // Establish a connection with a server
 // Original code from lecture
@@ -55,21 +76,6 @@ int open_clientfd(char* hostname, char* port) {
 
 }
 
-void distributeInput(char* input, int* argc, char** argv) { //distributes input into argc & argv
-    // we would need to keep input for future usage hence we would define a temp here
-    // should not modify the orginial input for any cases
-    char tempInput[MAX_LINE];
-    strcpy(tempInput, input);
-
-    char* token;        
-    const char* delims = " \t\n";
-    token = strtok(tempInput, delims);  // first token is the command
-    while (token != NULL) {             // getting next arguments in to argv
-        argv[(*argc)++] = token;
-        token = strtok(NULL, delims);
-    }
-}
-
 int main(int argc, char* argv[]) {
     // User query command
     char input[MAX_LINE];
@@ -82,14 +88,16 @@ int main(int argc, char* argv[]) {
     // Initialize the socket_fd. -1 if connection fails
     int socket = 0;             
     int isNotConnected = 1;
-    
+
+    // At first no file is open for the client
+    int fileOpen = 0;
+
     while (1) {
         // set back and clean up
         fflush(stdin);
         fflush(stdout);
         memset(response, 0, sizeof(response));
         u_argc = 0;
-
 
         // Make connection to the server. Keep looping until the connection succeeds
         while(isNotConnected == 1){
@@ -118,49 +126,13 @@ int main(int argc, char* argv[]) {
             printf("Command to quit.\n");
             break;          // break from client program (ends while loop)
         }
-
-        // validate the client command
-        // Whatever invalid format of a date (YYYY-MM-DD)
-        // Stock names as ticker symbols (PFE or MRNA)
-        // Also need to check for case-sensitive
-        if (u_argc == 0) {
-            continue;       // Move to wait for next command without sending user command to server
-        }
-        else if (strcmp(u_argv[0], "PricesOnDate") == 0 || strcmp(u_argv[0], "MaxPossible") == 0 ) {
-            if (strcmp(u_argv[0], "PricesOnDate") == 0) {
-                if (u_argc != 2) {
-                    printf("Invalid syntax\n");
-                    continue;
-                }
-                else {
-                    if (isInvalidFormatDate(u_argv[1]) == 1) {
-                        printf("Invalid syntax\n");
-                        continue;
-                    }
-                }
-            }
-            else if (strcmp(u_argv[0], "MaxPossible") == 0) {
-                if ((strcmp(u_argv[1], "profit") == 0 || strcmp(u_argv[1], "loss") == 0)
-                     && (strcmp(u_argv[2], "PFE") == 0 || strcmp(u_argv[2], "MRNA") == 0)) {
-                    if (isInvalidFormatDate(u_argv[3]) == 1) {
-                        if (isInvalidFormatDate(u_argv[4]) == 1) {
-                            printf("Invalid syntax\n");
-                            continue;
-                        }
-                    }     
-                }
-                else {
-                    printf("Invalid syntax\n");
-                    continue;
-                }
-            }
-        }
-        else {
-            printf("Invalid syntax\n");
+        
+        // Clients attempt to read or append when no file has successfully opened
+        if ((strcmp(u_argv[0], "read") == 0 || strcmp(u_argv[0], "append") == 0) && fileOpen == 0) {
+            printf("File not open\n");
             continue;
         }
-        // -- end checking user command
-        
+
         // Send client request (only those are valid) to server
         if (send(socket, input, strlen(input), 0) < 0) {
             printf("Fail to send message to server\n");
@@ -171,12 +143,22 @@ int main(int argc, char* argv[]) {
             printf("Fail to read message from server\n");
             break;
         }
-        // Display the response message in client side
-        printf("%s\n", response);
+
+        // Check server response and do appropriate update or print
+        // The requested file open is successful
+        if (strcmp(response, "opened") == 0) 
+            fileOpen = 1;
+        else if (strcmp(response, "closed") == 0)
+            fileOpen = 0;
+        else
+            printf("%s\n", response);   // display the read output from server
 
     }
-    
+
     // Close the connected socket
     close(socket);
     return 0;
 }
+
+
+
